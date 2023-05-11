@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package krake.v1;
+
+message Error {
+    string message = 1;
+    int32 code = 2;
+}
+
+message Message {
+    bytes key = 1;
+    bytes message = 2;
+}
+
+message ProduceRequest {
+    Message message = 1;
+}
+
+message ProduceResponse {
+    Error error = 1;
+}
+
+message RegisterConsumerRequest {
+    map<string, string> properties = 1;
+}
+
+message RegisterConsumerResponse {
+    Error error = 1;
+}
+
+message AddSubscriptionsRequest {
+    repeated string topics = 1;
+}
+
+message AddSubscriptionsResponse {
+    Error error = 1;
+}
+
+message ReadMessageRequest {
+    uint64 offset = 1;
+}
+
+message ReadMessageResponse {
+    Error error = 1;
+    Message message = 2;
+}
+
+service KrakeBrokerService {
+    rpc Produce(ProduceRequest) returns (ProduceResponse);
+    
+    rpc RegisterConsumer(RegisterConsumerRequest) returns (RegisterConsumerResponse);
+    rpc AddSubscriptions(AddSubscriptionsRequest) returns (AddSubscriptionsResponse);
+
+    rpc ReadMessage(ReadMessageRequest) returns (ReadMessageResponse);
+}
