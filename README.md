@@ -1,42 +1,57 @@
-# krake
-krake is like kafka but easier to scale for smaller businesses.
+# Krake
+Krake is a smaller subset of kafka.
 
-the problem with Kafka is that it is difficult to use for smaller organisations. 
-maintaining a set of kafka brokers is tricky especially when using something like kubernetes which is not designed for stateful applications. 
-it is expensive to use existing solutions such as MSK or Confluents managed Kafka.
-it is difficult to setup your own broker instances and manage them.
+## Goals
+Kafka can be challenging to use for smaller organizations when maintaining a cluster of Kafka brokers. Existing solutions like MSK or Confluent's managed Kafka can be costly, and it's difficult to set up and manage your own broker instances, especially on Kubernetes.
 
-krake aims to provide _similar_ guarantees, semantics, and a familiar api with the ease of a modern & low-footprint design which can be hosted 
-on a smaller kubernetes cluster. no zookeeper, no 2gb minimum per broker, easier to host on kubernetes or even spin up on small digitalocean droplets.
+Krake aims to provide similar guarantees, semantics, and a familiar Kafka-like API while offering a modern and low-footprint design that can be hosted on smaller Kubernetes clusters. It doesn't require Zookeeper, has no 2GB minimum per broker, and is easier to host on Kubernetes or spin up on small DigitalOcean instances if you self-manage.*
 
-## goals
+1. Runs on kubernetes (custom operator?)
+2. Compatible with a subset of the Kafka APIs - to be decided _how_ compatible (not everything will be supported)
+3. Written in Go meaning lower overheads than the JVM
+4. Tiered storage from the get-go
+   
+The primary scenario for using Krake is a small organisation or start up that wants to have something low-effort, opinionated, and easy to manage yet unlock the benefits of an event-driven architecture and some existing Kafka tooling and expertise.
 
-1. runs on kubernetes (custom operator?)
-2. compatible with a subset of the Kafka apis - to be decided _how_ compatible (not everything will be supported)
-3. written in Go = lower overheads than the jvm
-4. tiered storage from the get-go
+*In theory. Krake is a work-in-progress and may do anything it likes up to and including eating your laundry.
 
-### on the kafka api
+### Notes on the (lack of) Kafka API
 Krake does _not_ support the Kafka API on the wire, i.e. the exact protocol. Why?
 
-- it complicates implementation details
-- it adds a tight coupling to the kafka api itself
+- It complicates implementation details
+- It adds a tight coupling to the kafka api itself
 
-## high-level architecture
+## High-level Architecture (WIP)
+The high level architecture is broadly the same as Kafka when it comes to topics, partitions, segments, in-sync-replicas, message consuming and producing and most configuration properties you would expect in Kafka.
 
-the high level architecture is broadly the same. topics, partitions, in-sync-replicas, message consuming and producing via offsets.
+```mermaid
+graph RL
+    subgraph Ta[Events Topic]
+        TaP1[Partition #0];
+        TaP2[Partition #1];
+        TaP3[Partition #2];
+    end
 
-//TODO diagram
+    subgraph CGa[Events Consumer Group]
+        ac1;
+        ac2;
+    end
 
-to achieve more flexibility in scaling krake uses a snapshotting mechanism* to make it easier to re-load brokers onto
-new pods.
-*snapshotting system to be designed.
+    subgraph KR[Krake Broker]
+        ac1[Consumer 1]--"consumes"--->TaP1;
+        ac2[Consumer 2]--"consumes"--->TaP2;
+        ac2--"consumes"--->TaP3;
+        p1[Events Producer]-->Ta;
+    end
+    
+```
 
-### technology
-1. 
+### Technology
+Krake uses gRPC for managing client/server connections between producers, consumers, and the primary broker. Raft (or some variant of Raft) will be used for managing consistency among nodes in a Krake cluster. Go is the primary language of choice for Krake across the entire stack.
 
-## non-guarantees/goals
-1. broker afinity - partitions will be expected to be on all hosts.
+## Non-goals (WIP)
+1. broker affinity - partitions will be expected to be on all hosts.
+2. ...
 
 ## license
-apache?
+See the [LICENSE](./LICENSE)
