@@ -13,9 +13,14 @@ type Broker interface {
 	CreateTopic(configuration TopicConfiguration) error
 }
 
+type TopicPartitionKey struct {
+	Topic          string
+	PartitionIndex int32
+}
+
 type FilePool struct {
 	// partition index -> file
-	data map[int32]internal.File
+	data map[TopicPartitionKey]internal.File
 }
 
 func (f FilePool) Open(path string) internal.File {
@@ -29,14 +34,17 @@ type PartitionWriter struct {
 func NewPartitionWriter() *PartitionWriter {
 	return &PartitionWriter{
 		filePool: &FilePool{
-			data: map[int32]internal.File{},
+			data: map[TopicPartitionKey]internal.File{},
 		},
 	}
 }
 
-func (pw *PartitionWriter) Append(partition int32, p []byte) (n int, err error) {
+func (pw *PartitionWriter) Append(topic string, partitionIndex int32, p []byte) (n int, err error) {
 	// for now this only handles writing to the latest segment in the partition
-	seg := pw.ActiveSegment(partition)
+	seg := pw.ActiveSegment(TopicPartitionKey{
+		Topic:          topic,
+		PartitionIndex: partitionIndex,
+	})
 	count, err := seg.Write(p)
 	if err != nil {
 		return count, err
@@ -47,12 +55,14 @@ func (pw *PartitionWriter) Append(partition int32, p []byte) (n int, err error) 
 	return count, nil
 }
 
-func (pw *PartitionWriter) ActiveSegment(partitionIndex int32) internal.File {
-	seg, ok := pw.filePool.data[partitionIndex]
+func (pw *PartitionWriter) ActiveSegment(key TopicPartitionKey) internal.File {
+	seg, ok := pw.filePool.data[key]
 	if !ok {
-		log.Printf("no such segment %d\n", partitionIndex)
+		log.Printf("no such segment %d for topic %s\n", key.PartitionIndex, key.Topic)
+
+		// TODO should the invoker create the segment?
 		f := pw.filePool.Open("")
-		pw.filePool.data[partitionIndex] = f
+		pw.filePool.data[key] = f
 		return f
 	}
 	return seg
@@ -117,7 +127,7 @@ func (k *KrakeBroker) Produce(topic string, msg *Message) error {
 		panic("unhandled error")
 	}
 
-	_, err := k.writeStrategy.Append(partitionIdx, msg.Message)
+	_, err := k.writeStrategy.Append(topicCfg.Name, partitionIdx, msg.Message)
 	if err != nil {
 		return ErrWriteFailed
 	}

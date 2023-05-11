@@ -21,6 +21,55 @@ func newInMemoryBroker() (*PartitionWriter, Broker) {
 	return pw, b
 }
 
+// TODO test where segment is capped to smaller size
+// and we have writes on different active segments
+
+func TestKrakeBroker_Produce_MultipleTopics(t *testing.T) {
+	pw, b := newInMemoryBroker()
+
+	PartitionCount := 2
+
+	b.CreateTopic(TopicConfiguration{
+		Name:            "topic-a",
+		PartitionCount:  PartitionCount,
+		RetentionPeriod: 24 * time.Hour,
+	})
+
+	b.CreateTopic(TopicConfiguration{
+		Name:            "topic-b",
+		PartitionCount:  PartitionCount,
+		RetentionPeriod: 24 * time.Hour,
+	})
+
+	b.Produce("topic-a", &Message{
+		Key:     nil,
+		Message: []byte("hello"),
+	})
+
+	b.Produce("topic-a", &Message{
+		Key:     nil,
+		Message: []byte("world"),
+	})
+
+	b.Produce("topic-b", &Message{
+		Key:     nil,
+		Message: []byte("world"),
+	})
+
+	// assumes the active segment contains our writes
+	segment := pw.ActiveSegment(TopicPartitionKey{"topic-a", 0})
+	data, _ := io.ReadAll(segment)
+	assert.Equal(t, "hello", string(data))
+
+	segment = pw.ActiveSegment(TopicPartitionKey{"topic-a", 1})
+	data, _ = io.ReadAll(segment)
+	assert.Equal(t, "world", string(data))
+
+	segment = pw.ActiveSegment(TopicPartitionKey{"topic-b", 0})
+	data, _ = io.ReadAll(segment)
+	assert.Equal(t, "world", string(data))
+}
+
 func TestKrakeBroker_Produce_MemoryLayout(t *testing.T) {
 	pw, b := newInMemoryBroker()
 
@@ -45,7 +94,8 @@ func TestKrakeBroker_Produce_MemoryLayout(t *testing.T) {
 
 	// then i have a message on each partition
 	for i := 0; i < PartitionCount; i++ {
-		seg := pw.ActiveSegment(int32(i))
+		seg :=
+			pw.ActiveSegment(TopicPartitionKey{"my-topic", int32(i)})
 		data, _ := io.ReadAll(seg)
 
 		msg := fmt.Sprintf("message: %d", i)
@@ -105,10 +155,24 @@ func TestKrakeBroker_Produce(t *testing.T) {
 	// the message is stored to disk
 	assert.NoError(t, err)
 
-	seg := pw.ActiveSegment(0)
+	seg := pw.ActiveSegment(TopicPartitionKey{"my-topic", 0})
 	data, err := io.ReadAll(seg)
 	assert.NoError(t, err)
 	assert.Equal(t, "foo", string(data))
+}
+
+func TestKrakeBroker_Produce_NoTopicExists(t *testing.T) {
+	_, b := newInMemoryBroker()
+
+	msg := Message{
+		Key:     nil,
+		Message: []byte("foo"),
+	}
+
+	// when i produce a message to the broker
+	err := b.Produce("my-topic", &msg)
+
+	assert.ErrorIs(t, err, ErrNoSuchTopic)
 }
 
 func TestKrakeBroker_Consume(t *testing.T) {
