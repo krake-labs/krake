@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"hash/fnv"
 	"io"
 	"log"
@@ -14,6 +15,8 @@ type Broker interface {
 	Produce(s string, msg *Message) error
 	CreateTopic(configuration TopicConfiguration) error
 	Configure(m map[string]interface{})
+	ReadMessage(s string, consumerId uint32, timeout int) (*Message, error)
+	Subscribe(strings []string) uint32
 }
 
 type TopicPartitionKey struct {
@@ -74,6 +77,12 @@ type TopicConfiguration struct {
 	RetentionPeriod time.Duration
 }
 
+type ConsumerConfiguration struct {
+	ID                 uint32
+	AssignedPartitions []int32
+	Offsets            map[int32]int
+}
+
 type KrakeBroker struct {
 	*PartitionWriter
 
@@ -82,14 +91,99 @@ type KrakeBroker struct {
 	// used for round-robin partitioning
 	currPartitionIndex int32
 
+	// TODO this should handle consumer groups
+	offs map[uint32]ConsumerConfiguration
+
 	Config map[string]interface{}
 }
 
 func NewKrakeBroker(writeStrategy *PartitionWriter) *KrakeBroker {
 	return &KrakeBroker{
-		PartitionWriter: writeStrategy,
-		topics:          map[string]TopicConfiguration{},
+		PartitionWriter:    writeStrategy,
+		topics:             map[string]TopicConfiguration{},
+		currPartitionIndex: 0,
+		offs:               map[uint32]ConsumerConfiguration{},
+		// TODO(FELIX): defaults
+		Config: map[string]interface{}{},
 	}
+}
+
+func (k *KrakeBroker) Subscribe(topics []string) uint32 {
+	// TODO(FELIX): multiple topic subscriptions
+	topic := topics[0]
+
+	// note: i think the way this would work is
+	// assign all partitions. (greedy)
+	// new consumer comes in, assign evenly and trigger rebalances?
+
+	cfg, _ := k.topics[topic]
+
+	offsets := map[int32]int{}
+
+	// FIXME(FELIX): this sucks
+	var assignedPartitions []int32
+	for i := 0; i < cfg.PartitionCount; i++ {
+		partitionIndex := int32(i)
+		assignedPartitions = append(assignedPartitions, partitionIndex)
+
+		// FIXME(FELIX): handle reset.to earliest, latest, etc.
+		offsets[partitionIndex] = 0
+	}
+
+	u, _ := uuid.NewUUID()
+	k.offs[u.ID()] = ConsumerConfiguration{
+		ID:                 u.ID(),
+		AssignedPartitions: assignedPartitions,
+		Offsets:            offsets,
+	}
+
+	return u.ID()
+}
+
+func (k *KrakeBroker) ReadMessage(topic string, consumerId uint32, timeout int) (*Message, error) {
+	// if enable.auto.commit == true (default) commit after read.
+
+	// 1. if leader is not avail => err
+	// 2. check cons offs in partition that is not yet consumed
+	consumerCfg, ok := k.offs[consumerId]
+	if !ok {
+		panic("unhandled edgecase")
+	}
+
+	partitionIndex := consumerCfg.AssignedPartitions[0]
+
+	// TODO handle multiple partitions.
+
+	segment, err := k.ActiveSegment(TopicPartitionKey{topic, partitionIndex})
+	if err != nil {
+		panic(err)
+	}
+
+	// TODO handle loading offset/segment from index.
+	// for now this is technically earliest
+
+	// FIXME we need to encode Record into the file
+	// Record should contain the length
+
+	offs, ok := consumerCfg.Offsets[partitionIndex]
+	if !ok {
+		panic("unhandled edgecase")
+	}
+
+	buf := make([]byte, 123)
+	n, err := segment.ReadAt(buf, int64(offs))
+	if err != nil && err != io.EOF {
+		panic(err)
+	}
+
+	log.Println("read", string(buf[:n]))
+
+	// TODO: update consumer offs (if ac enable)
+
+	return &Message{
+		Key:     nil,
+		Message: buf[:n],
+	}, nil
 }
 
 func (k *KrakeBroker) Configure(m map[string]interface{}) {

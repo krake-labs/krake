@@ -25,8 +25,39 @@ func newInMemoryBroker() (*PartitionWriter, Broker) {
 	return pw, b
 }
 
-// TODO test where segment is capped to smaller size
-// and we have writes on different active segments
+// TODO consume from offset
+
+// TODO consume from offset (in a different segment)
+
+// TODO consumer self manages offsets
+
+// TODO subscription to multiple topics
+
+// TODO rebalances
+
+// TODO two consumers on different partitions
+
+func TestKrakeBroker_Consume_Consume(t *testing.T) {
+	// subscribe topics => broker returns current partitions
+	// partition added or removed =>rebalance is triggered and redistributes partitions
+
+	// TODO ensure re-consumption/commit offset works
+
+	_, b := newInMemoryBroker()
+	b.CreateTopic(TopicConfiguration{
+		Name:            "my-fancy-topic",
+		PartitionCount:  2,
+		RetentionPeriod: 2 * time.Hour,
+	})
+
+	b.Produce("my-fancy-topic", &Message{nil, []byte("hello world")})
+
+	consumerId := b.Subscribe([]string{"my-fancy-topic"})
+
+	msg, err := b.ReadMessage("my-fancy-topic", consumerId, -1)
+	assert.NoError(t, err)
+	blobStartsWith(t, "hello world", msg.Message)
+}
 
 func TestKrakeBroker_Produce_MultipleSegments(t *testing.T) {
 	pw, b := newInMemoryBroker()

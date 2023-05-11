@@ -35,7 +35,8 @@ new pods.
 ### technology
 1. 
 
-## non-guarantees
+## non-guarantees/goals
+1. broker afinity - partitions will be expected to be on all hosts.
 
 ## license
 apache?
