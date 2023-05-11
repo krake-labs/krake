@@ -18,11 +18,65 @@ func newInMemoryBroker() (*PartitionWriter, Broker) {
 	// given a broker with an in memory write strategy
 	pw := NewPartitionWriter()
 	b := NewKrakeBroker(pw)
+	b.Configure(map[string]interface{}{
+		"log.dirs":          "/tmp/",
+		"log.segment.bytes": 100,
+	})
 	return pw, b
 }
 
 // TODO test where segment is capped to smaller size
 // and we have writes on different active segments
+
+func TestKrakeBroker_Produce_MultipleSegments(t *testing.T) {
+	pw, b := newInMemoryBroker()
+
+	SegmentSizeInBytes := 2
+	b.Configure(map[string]interface{}{
+		"log.dirs":          "/tmp/",
+		"log.segment.bytes": SegmentSizeInBytes,
+	})
+
+	b.CreateTopic(TopicConfiguration{Name: "my-topic"})
+
+	b.Produce("my-topic", &Message{nil, []byte("swag")})
+
+	key := TopicPartitionKey{"my-topic", 0}
+
+	seg, _ := pw.loadSegment(key, 0)
+	data, _ := io.ReadAll(seg)
+	assert.Equal(t, "swag", string(data))
+}
+
+// blobStartsWith is a helper util to only check the given string is
+// in a blob
+func blobStartsWith(t *testing.T, expected string, blob []byte) {
+	assert.Equal(t, expected, string(blob[:len(expected)]))
+}
+
+func TestKrakeBroker_Produce_PartitionIndexingWrapAround(t *testing.T) {
+	// ensures that the functionality for round robin partition
+	// keying wraps around to 0
+
+	pw, b := newInMemoryBroker()
+	b.CreateTopic(TopicConfiguration{
+		Name:            "my-topic",
+		PartitionCount:  2,
+		RetentionPeriod: 0,
+	})
+
+	b.Produce("my-topic", &Message{nil, []byte("hello")})
+	b.Produce("my-topic", &Message{nil, []byte("world")})
+	b.Produce("my-topic", &Message{nil, []byte("my")})
+
+	segment, _ := pw.loadSegment(TopicPartitionKey{"my-topic", 0}, 0)
+	data, _ := io.ReadAll(segment)
+	blobStartsWith(t, "hellomy", data)
+
+	segment, _ = pw.loadSegment(TopicPartitionKey{"my-topic", 1}, 0)
+	data, _ = io.ReadAll(segment)
+	blobStartsWith(t, "world", data)
+}
 
 func TestKrakeBroker_Produce_MultipleTopics(t *testing.T) {
 	pw, b := newInMemoryBroker()
@@ -57,17 +111,17 @@ func TestKrakeBroker_Produce_MultipleTopics(t *testing.T) {
 	})
 
 	// assumes the active segment contains our writes
-	segment := pw.ActiveSegment(TopicPartitionKey{"topic-a", 0})
+	segment, _ := pw.loadSegment(TopicPartitionKey{"topic-a", 0}, 0)
 	data, _ := io.ReadAll(segment)
-	assert.Equal(t, "hello", string(data))
+	blobStartsWith(t, "hello", data)
 
-	segment = pw.ActiveSegment(TopicPartitionKey{"topic-a", 1})
+	segment, _ = pw.loadSegment(TopicPartitionKey{"topic-a", 1}, 0)
 	data, _ = io.ReadAll(segment)
-	assert.Equal(t, "world", string(data))
+	blobStartsWith(t, "world", data)
 
-	segment = pw.ActiveSegment(TopicPartitionKey{"topic-b", 0})
+	segment, _ = pw.loadSegment(TopicPartitionKey{"topic-b", 0}, 0)
 	data, _ = io.ReadAll(segment)
-	assert.Equal(t, "world", string(data))
+	blobStartsWith(t, "world", data)
 }
 
 func TestKrakeBroker_Produce_MemoryLayout(t *testing.T) {
@@ -94,12 +148,12 @@ func TestKrakeBroker_Produce_MemoryLayout(t *testing.T) {
 
 	// then i have a message on each partition
 	for i := 0; i < PartitionCount; i++ {
-		seg :=
-			pw.ActiveSegment(TopicPartitionKey{"my-topic", int32(i)})
+		seg, _ :=
+			pw.loadSegment(TopicPartitionKey{"my-topic", int32(i)}, 0)
 		data, _ := io.ReadAll(seg)
 
 		msg := fmt.Sprintf("message: %d", i)
-		assert.Equal(t, msg, string(data))
+		blobStartsWith(t, msg, data)
 	}
 }
 
@@ -155,10 +209,10 @@ func TestKrakeBroker_Produce(t *testing.T) {
 	// the message is stored to disk
 	assert.NoError(t, err)
 
-	seg := pw.ActiveSegment(TopicPartitionKey{"my-topic", 0})
+	seg, _ := pw.loadSegment(TopicPartitionKey{"my-topic", 0}, 0)
 	data, err := io.ReadAll(seg)
 	assert.NoError(t, err)
-	assert.Equal(t, "foo", string(data))
+	blobStartsWith(t, "foo", data)
 }
 
 func TestKrakeBroker_Produce_NoTopicExists(t *testing.T) {
