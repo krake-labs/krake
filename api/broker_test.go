@@ -1,8 +1,9 @@
 package api
 
 import (
-	"bytes"
+	"fmt"
 	"github.com/stretchr/testify/assert"
+	"io"
 	"testing"
 	"time"
 )
@@ -13,15 +14,49 @@ import (
 // Unsubscribe() => unsub from a topic
 // Pause() => stop consumption
 
-func TestKrakeBroker_Produce_MemoryLayout(t *testing.T) {
+func newInMemoryBroker() (*PartitionWriter, Broker) {
+	// given a broker with an in memory write strategy
+	pw := NewPartitionWriter()
+	b := NewKrakeBroker(pw)
+	return pw, b
+}
 
+func TestKrakeBroker_Produce_MemoryLayout(t *testing.T) {
+	pw, b := newInMemoryBroker()
+
+	PartitionCount := 3
+
+	// ... and a topic
+	err := b.CreateTopic(TopicConfiguration{
+		Name:            "my-topic",
+		PartitionCount:  PartitionCount,
+		RetentionPeriod: 24 * time.Hour,
+	})
+	assert.NoError(t, err)
+
+	// when i produce {PartitionCount} messages
+	for i := 0; i < PartitionCount; i++ {
+		err = b.Produce("my-topic", &Message{
+			Key:     nil,
+			Message: []byte(fmt.Sprintf("message: %d", i)),
+		})
+		assert.NoError(t, err)
+	}
+
+	// then i have a message on each partition
+	for i := 0; i < PartitionCount; i++ {
+		seg := pw.ActiveSegment(int32(i))
+		data, _ := io.ReadAll(seg)
+
+		msg := fmt.Sprintf("message: %d", i)
+		assert.Equal(t, msg, string(data))
+	}
 }
 
 func TestKrakeBroker_CreateDuplicateTopics(t *testing.T) {
-	ws := bytes.NewBuffer([]byte{})
-	b := NewKrakeBroker(ws)
+	_, b := newInMemoryBroker()
 
-	err := b.CreateTopic(topicConfiguration{
+	err := b.CreateTopic(TopicConfiguration{
 		Name:            "my-topic",
 		PartitionCount:  3,
 		RetentionPeriod: 2 * time.Hour,
@@ -29,7 +64,7 @@ func TestKrakeBroker_CreateDuplicateTopics(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	err = b.CreateTopic(topicConfiguration{
+	err = b.CreateTopic(TopicConfiguration{
 		Name:            "my-topic",
 		PartitionCount:  3,
 		RetentionPeriod: 2 * time.Hour,
@@ -39,10 +74,9 @@ func TestKrakeBroker_CreateDuplicateTopics(t *testing.T) {
 }
 
 func TestKrakeBroker_CreateTopic(t *testing.T) {
-	ws := bytes.NewBuffer([]byte{})
-	b := NewKrakeBroker(ws)
+	_, b := newInMemoryBroker()
 
-	err := b.CreateTopic(topicConfiguration{
+	err := b.CreateTopic(TopicConfiguration{
 		Name:            "my-topic",
 		PartitionCount:  3,
 		RetentionPeriod: 2 * time.Hour,
@@ -52,9 +86,13 @@ func TestKrakeBroker_CreateTopic(t *testing.T) {
 }
 
 func TestKrakeBroker_Produce(t *testing.T) {
-	// given a broker
-	ws := bytes.NewBuffer([]byte{})
-	b := NewKrakeBroker(ws)
+	pw, b := newInMemoryBroker()
+
+	b.CreateTopic(TopicConfiguration{
+		Name:            "my-topic",
+		PartitionCount:  3,
+		RetentionPeriod: 60 * time.Second,
+	})
 
 	msg := Message{
 		Key:     nil,
@@ -66,7 +104,11 @@ func TestKrakeBroker_Produce(t *testing.T) {
 
 	// the message is stored to disk
 	assert.NoError(t, err)
-	assert.Equal(t, "foo", string(ws.Bytes()))
+
+	seg := pw.ActiveSegment(0)
+	data, err := io.ReadAll(seg)
+	assert.NoError(t, err)
+	assert.Equal(t, "foo", string(data))
 }
 
 func TestKrakeBroker_Consume(t *testing.T) {
