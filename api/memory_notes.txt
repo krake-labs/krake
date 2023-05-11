@@ -1,0 +1,67 @@
+// This test is to ensure that the memory layout
+// matches that of Kafka.
+
+// what is the memory layout for a message on a topic?
+// a topic is split out over many partitions.
+// partitions are split into Segments.
+// a segment is either 1GB or a 7 day period of data.
+// whichever is smallest.
+// as Kafka writes to a file, if the segment limit is reached
+// the file is closed and a new one is opened.
+
+// the active segment is the segment we are currently writing to.
+// active segment is _NEVER_ delted.
+// file handle is open for every single segment in every partition
+// even the inactive segments.
+// inside this file we store kafka messages and their offsets
+// having the same format on disk + on the wire allows for a zero-copy
+// optimisation when sending messages to consumers.
+
+// kafka messages consist of
+// user payload, system headers, user payload includes an
+// optional key, a value, and an optional collection of headers
+// each header is a key value pair.
+
+// in v2 msg format kafka producers always send
+// messages in batches. if you send a single msg the batching
+// adds a bit of overhead.
+
+//msg batch headers include:
+// 1. magic number for the format version
+// 2. offset of the first message in the batch and the diff
+// from the offset of the last message
+// timestamp of first msg and the diff from the offs of the last msg
+// size of batch in bytes
+// epoch of the leader that recvd. the batch
+// checksum for validating corruption of batch
+// sixteen bits indicating compression, timestamp, etc.
+// producer id, producer epoch, and first seq. in the batch (exactly once)
+// set of messages in the batch.
+
+// records themselves have system headers:
+// size of the record in bytes,
+// attributes (no record level ones) this isnt used?
+// diff between offset of the curr record and the first off
+// in the batch
+// diff in ms between the timestamp of this recorda nd the first
+// timestamp in the batch
+// the user payload: key, value, headers.
+
+// INDEXING.
+// kafka lets consumers fetch messages from any offset
+// this means that if we ask for 1mb of messages from offs 100
+// the broker needs to find the message for offs 100
+// which can be in any offset for the partition.
+// in order to help the broker quickly locate the msg for
+// a given offset kafka has a index for each partition
+// this index maps offsets to segment files and positions within the file
+// there is also a second index that maps timestamps to message
+// offsets this index is used when searching for msgs by timestamp
+// indexes are also broken into segments. we can delete old
+// index entries when the messages are purged. kafka does not
+// maintain checksums of the index
+// if the index is corrupted then we need to regenerate this
+// from the matching log segment by re-reading the messages and recording the
+// offsets and locations.
+// an admin can also delete index segments if needed as they are
+// regenerated automatically (good testcase).

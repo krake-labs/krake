@@ -1,0 +1,10 @@
+# test suite
+
+can we make a kafka compatible broker?
+
+test suite:
+
+1. producer produces a message
+2. consumer consumes messages
+
+consume from earliest point in time (offs 0)
