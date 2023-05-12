@@ -1,6 +1,21 @@
 # Krake
 Krake is a smaller subset of kafka.
 
+## Table of Contents
+- [Krake](#krake)
+  - [Table of Contents](#table-of-contents)
+  - [State of Play](#state-of-play)
+  - [Goals](#goals)
+    - [Notes on the (lack of) Kafka API](#notes-on-the-lack-of-kafka-api)
+  - [High-level Architecture (WIP)](#high-level-architecture-wip)
+    - [Technology](#technology)
+  - [Non-goals (WIP)](#non-goals-wip)
+  - [License](#license)
+
+## State of Play
+
+Currently Krake is not ready for production use and is a work in progress.
+
 ## Goals
 Kafka can be challenging to use for smaller organizations when maintaining a cluster of Kafka brokers. Existing solutions like MSK or Confluent's managed Kafka can be costly, and it's difficult to set up and manage your own broker instances, especially on Kubernetes.
 
@@ -53,5 +68,5 @@ Krake uses gRPC for managing client/server connections between producers, consum
 1. broker affinity - partitions will be expected to be on all hosts.
 2. ...
 
-## license
+## License
 See the [LICENSE](./LICENSE)
