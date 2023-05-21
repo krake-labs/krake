@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/bat-labs/krake/api"
+	"github.com/krake-labs/krake/api"
 )
 
 func main() {

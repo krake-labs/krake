@@ -2,9 +2,10 @@ package pkg
 
 import (
 	"context"
-	"github.com/bat-labs/krake/api"
-	v1 "github.com/bat-labs/krake/gen/krake/v1"
+
 	connect_go "github.com/bufbuild/connect-go"
+	"github.com/krake-labs/krake/api"
+	v1 "github.com/krake-labs/krake/gen/krake/v1"
 )
 
 type KrakeServiceServer struct {

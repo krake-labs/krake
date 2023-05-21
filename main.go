@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/bat-labs/krake/gen/krake/v1/krakev1connect"
-	"github.com/bat-labs/krake/pkg"
+	"net/http"
+
+	"github.com/krake-labs/krake/gen/krake/v1/krakev1connect"
+	"github.com/krake-labs/krake/pkg"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
-	"net/http"
 )
 
 const address = "localhost:8080"

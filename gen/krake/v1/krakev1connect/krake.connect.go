@@ -7,7 +7,7 @@ package krakev1connect
 import (
 	context "context"
 	errors "errors"
-	v1 "github.com/bat-labs/krake/gen/krake/v1"
+	v1 "github.com/krake-labs/krake/gen/krake/v1"
 	connect_go "github.com/bufbuild/connect-go"
 	http "net/http"
 	strings "strings"

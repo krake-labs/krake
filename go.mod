@@ -1,4 +1,4 @@
-module github.com/bat-labs/krake
+module github.com/krake-labs/krake
 
 go 1.19
 
